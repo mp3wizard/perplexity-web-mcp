@@ -1,0 +1,30 @@
+# ─ ─── Folders ─── ─ #
+.idea/
+.vscode/
+.venv/
+node_modules/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+*.egg-info/
+.debug/
+tools
+.planning/
+plan/
+docs/plans/
+
+# ─ ─── Files ─── ─ #
+example*.py
+publish.sh
+
+# ─ ─── Extensions ─── ─ #
+*.env
+*.log
+*.tmp
+*.bak
+*.mcpb
+.DS_Store
+thumbs.db
