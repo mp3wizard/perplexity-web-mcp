@@ -31,6 +31,15 @@ from perplexity_web_mcp.rate_limits import (
 from perplexity_web_mcp.token_store import load_token
 
 
+def tool_fn(tool):
+    """Return the raw callable behind an MCP tool.
+
+    fastmcp 2.x wraps decorated functions in a FunctionTool that exposes the
+    original via `.fn`; 3.x returns the plain function. Works on both.
+    """
+    return getattr(tool, "fn", tool)
+
+
 # ============================================================================
 # Fixtures: realistic API response payloads
 # ============================================================================
@@ -417,7 +426,7 @@ class TestMcpUsageFormatting:
         mock_cache.get_credits.return_value = None
         mock_cache_fn.return_value = mock_cache
 
-        summary = pplx_usage.fn()
+        summary = tool_fn(pplx_usage)()
 
         assert "Subscription: Pro ($20/mo)" in summary
         assert "Billing: yearly (active)" in summary
@@ -439,7 +448,7 @@ class TestMcpConnectorsFormatting:
         )
         mock_cache_fn.return_value = mock_cache
 
-        summary = pplx_connectors.fn(refresh=False)
+        summary = tool_fn(pplx_connectors)(refresh=False)
 
         assert "pitchbook_mcp_cashmere" in summary
         assert "3/5" in summary

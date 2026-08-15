@@ -8,6 +8,15 @@ from perplexity_web_mcp.mcp import server
 from perplexity_web_mcp.models import Models
 
 
+def tool_fn(tool):
+    """Return the raw callable behind an MCP tool.
+
+    fastmcp 2.x wraps decorated functions in a FunctionTool that exposes the
+    original via `.fn`; 3.x returns the plain function. Works on both.
+    """
+    return getattr(tool, "fn", tool)
+
+
 def test_current_model_tools_route_to_live_identifiers() -> None:
     cases = (
         (server.pplx_gpt56_terra, Models.GPT_56_TERRA),
@@ -20,7 +29,7 @@ def test_current_model_tools_route_to_live_identifiers() -> None:
 
     with patch.object(server, "ask", return_value="ok") as mock_ask:
         for tool, model in cases:
-            assert tool.fn("question", "none", "conversation") == "ok"
+            assert tool_fn(tool)("question", "none", "conversation") == "ok"
             mock_ask.assert_called_with("question", model, "none", "conversation")
 
 
@@ -45,8 +54,9 @@ def test_mcp_auth_preserves_totp_challenge_between_calls() -> None:
             patch.object(server, "save_token", return_value=True),
             patch("perplexity_web_mcp.cli.auth.get_user_info", return_value=None),
         ):
-            first = server.pplx_auth_complete.fn("user@example.com", "654321")
-            second = server.pplx_auth_complete.fn("user@example.com", totp_code="123456")
+            auth_complete = tool_fn(server.pplx_auth_complete)
+            first = auth_complete("user@example.com", "654321")
+            second = auth_complete("user@example.com", totp_code="123456")
 
         assert first.startswith("TOTP_REQUIRED")
         assert second.startswith("SUCCESS")
