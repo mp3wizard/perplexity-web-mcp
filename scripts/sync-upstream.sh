@@ -15,9 +15,16 @@
 # So we sync by *content*, not history: diff upstream between the last synced
 # commit and its current HEAD, then apply that patch here.
 #
-# Usage: bash scripts/sync-upstream.sh
+# Usage: bash scripts/sync-upstream.sh [--check]
+#
+#   (no flag)  sync: fetch, apply upstream changes, update the marker
+#   --check    read-only. Report whether upstream moved and what changed.
+#              Touches nothing — no fetch, no apply, no marker update. Safe to
+#              run from an unattended watcher that must not modify the repo.
+#
 # Exit:  0 = up to date or applied cleanly | 2 = conflicts need a human
 #        1 = hard failure (never leaves the repo in a pushable state)
+#        --check: 0 = no new commits | 3 = new commits available
 
 set -euo pipefail
 
@@ -43,6 +50,31 @@ NEW=$(gh api repos/jacob-bd/perplexity-web-mcp/commits/main --jq .sha 2>/dev/nul
 if [ "$LAST" = "$NEW" ]; then
   echo "UP_TO_DATE — upstream still at ${NEW:0:12}, nothing to sync."
   exit 0
+fi
+
+if [ "${1:-}" = "--check" ]; then
+  echo "NEW_COMMITS — upstream moved ${LAST:0:12} -> ${NEW:0:12}"
+  echo
+  echo "Commits:"
+  gh api "repos/jacob-bd/perplexity-web-mcp/compare/$LAST...$NEW" \
+     --jq '.commits[] | "  \(.sha[0:8])  \(.commit.message | split("\n")[0])"' 2>/dev/null \
+     || echo "  (could not list commits — gh unavailable or unauthenticated)"
+  echo
+  echo "Files changed outside $FORBIDDEN_PATH:"
+  gh api "repos/jacob-bd/perplexity-web-mcp/compare/$LAST...$NEW" \
+     --jq '.files[].filename' 2>/dev/null | grep -v "^$FORBIDDEN_PATH" | sed 's/^/  /' \
+     || echo "  (could not list files)"
+  echo
+  echo "Touches this fork's divergent files?"
+  CHANGED=$(gh api "repos/jacob-bd/perplexity-web-mcp/compare/$LAST...$NEW" --jq '.files[].filename' 2>/dev/null || true)
+  HIT=0
+  for f in pyproject.toml tests/test_mcp_server.py tests/test_rate_limits.py README.md .gitignore; do
+    if printf '%s\n' "$CHANGED" | grep -qx "$f"; then echo "  CONFLICT LIKELY: $f"; HIT=1; fi
+  done
+  [ "$HIT" -eq 0 ] && echo "  No — a clean apply is likely."
+  echo
+  echo "Nothing was modified. Run without --check, locally, to apply."
+  exit 3
 fi
 
 # Only now pay for the fetch, and skip blobs we do not need.
