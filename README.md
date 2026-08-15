@@ -24,6 +24,52 @@
 
 MCP server, CLI, and API-compatible interface for Perplexity AI's web interface.
 
+---
+
+> ### ℹ️ About this fork
+>
+> This is a personal fork of [jacob-bd/perplexity-web-mcp](https://github.com/jacob-bd/perplexity-web-mcp)
+> maintained by [@mp3wizard](https://github.com/mp3wizard). All credit for the project
+> belongs to the original author — see [Credits](#credits). It exists for two reasons:
+>
+> **1. `fastmcp` upgraded to 3.x to close a CVSS 10.0 vulnerability.**
+> Upstream pins `fastmcp>=2.14.4,<3.0`. That upper bound — not the resolver — blocks the
+> fix for three advisories patched in 3.2.0: [GHSA-vv7q-7jx5-f767](https://github.com/advisories/GHSA-vv7q-7jx5-f767)
+> (CVSS 10.0), [GHSA-rww4-4w9c-7733](https://github.com/advisories/GHSA-rww4-4w9c-7733)
+> (8.2), and [GHSA-m8x7-r2rg-vh5g](https://github.com/advisories/GHSA-m8x7-r2rg-vh5g) (6.7).
+> `uv lock --upgrade` cannot cross a major boundary the constraint forbids, so the pin
+> had to move.
+>
+> Only test code was in the way, not the server: production touches a small, stable slice
+> of the fastmcp API (`FastMCP()`, `@mcp.tool`, `@mcp.resource`, `mcp.run()`), all unchanged
+> in 3.x. Four tests reached into `tool.fn`, an internal that 2.x exposed via its
+> `FunctionTool` wrapper and 3.x no longer has. Those now go through a small `tool_fn()`
+> helper that works on **both** major versions, so this is not a one-way trade of pins.
+>
+> Verified on `fastmcp` 2.14.7 and 3.4.7 — full suite **462 passed on each**; 30 MCP tools,
+> 1 resource and 1 template register; a tool invoked through the real dispatch chain returns
+> correctly; `pwm api` starts, enforces auth, and completes a live end-to-end query.
+> `osv-scanner` against the installed environment goes from **4 known vulnerabilities to none**
+> (3.x also drops the `pydocket → fakeredis[lua] → lupa` chain plus `redis` and `diskcache`,
+> removing ten packages and with them the unfixable
+> [GHSA-w8v5-vhqr-4h9v](https://github.com/advisories/GHSA-w8v5-vhqr-4h9v)).
+>
+> **2. The committed Chrome debug profile is removed from history.**
+> Upstream tracks a real `.chrome-debug-profile/` directory (5,293 files, ~358 MB) containing
+> `Cookies`, `Login Data`, `Secure Preferences`, and an authenticated `perplexity.ai` IndexedDB
+> session. This fork was rebuilt with that path stripped from history rather than deleted in a
+> later commit, so the credentials are not retrievable here at any revision, and `.gitignore`
+> now blocks it from returning. The repo drops from ~521 MB to ~3 MB as a side effect.
+>
+> This is **not** a fix for upstream — the data is still live there and only its author can
+> rotate those credentials and rewrite that history. If you are the author and reading this,
+> that is the action needed.
+>
+> Everything else is unchanged from upstream. Not published to PyPI — install from source
+> (see [Installation](#installation)).
+
+---
+
 Use your Perplexity Pro/Max subscription to access premium models (Sonar 2, GPT-5.6 Terra, GPT-5.6 Sol, Gemini 3.1 Pro, Claude Sonnet 5, Claude Opus 4.8, GLM 5.2, Kimi K2.6, Grok 4.5, and Nemotron 3 Ultra) from the terminal, through MCP tools, or as an API endpoint.
 
 ## Features
@@ -54,7 +100,17 @@ The goal here was to learn — both about building CLI tools in Python and about
 
 ## Installation
 
-### From PyPI (recommended)
+### From this fork (source)
+
+The PyPI package is upstream's and still carries the `fastmcp<3.0` pin, so it does **not**
+include the CVE fix above. To get this fork's version, install from source:
+
+```bash
+git clone https://github.com/mp3wizard/perplexity-web-mcp
+uv tool install ./perplexity-web-mcp
+```
+
+### From PyPI (upstream — vulnerable pin)
 
 **Using uv:**
 

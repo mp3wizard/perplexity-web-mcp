@@ -28,3 +28,9 @@ publish.sh
 *.mcpb
 .DS_Store
 thumbs.db
+
+# Browser automation profiles — contain real cookies, Login Data, and live
+# session state. Never commit these.
+.chrome-debug-profile/
+*-debug-profile/
+mcps-audit-report.pdf
