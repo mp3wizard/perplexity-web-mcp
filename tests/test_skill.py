@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import stat
 from unittest.mock import patch
 
 import pytest
@@ -84,13 +85,20 @@ class TestGetInstalledVersion:
 class TestIsToolInstalled:
     """Test the two-signal tool detection logic."""
 
-    def test_detected_via_binary_on_path(self) -> None:
+    def test_detected_via_binary_on_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        binary = bin_dir / "fake-tool.exe"
+        binary.touch()
+        binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+        monkeypatch.setenv("PATH", str(bin_dir))
+
         target = SkillTarget(
             name="fake-tool",
             description="T",
             user_dir=Path("/nonexistent/skills"),
             project_dir=".fake/skills",
-            binary="python3",
+            binary=binary.name,
             root_dirs=[],
         )
         assert _is_tool_installed(target) is True
@@ -224,6 +232,20 @@ class TestInstallUninstall:
         _install_skill(skill_source, dest_dir)
         assert "modified" not in installed_skill.read_text()
 
+    def test_install_failure_preserves_existing_skill(self, skill_source: Path, dest_dir: Path) -> None:
+        _install_skill(skill_source, dest_dir)
+        installed_skill = dest_dir / SKILL_DIR_NAME / "SKILL.md"
+        original_content = installed_skill.read_text()
+
+        with patch(
+            "perplexity_web_mcp.cli.skill.shutil.copytree",
+            side_effect=OSError("access denied"),
+        ):
+            assert _install_skill(skill_source, dest_dir) is False
+
+        assert installed_skill.read_text() == original_content
+        assert (dest_dir / SKILL_DIR_NAME / "references" / "models.md").exists()
+
     def test_uninstall_removes_directory(self, skill_source: Path, dest_dir: Path) -> None:
         _install_skill(skill_source, dest_dir)
         installed = dest_dir / SKILL_DIR_NAME
@@ -317,3 +339,35 @@ class TestCmdSkill:
         assert "Updated" in out
         assert "0.3.0" in out
         assert "0.4.0" in out
+
+    @patch("perplexity_web_mcp.cli.skill._find_skill_source")
+    @patch("perplexity_web_mcp.cli.skill._get_targets")
+    @patch("perplexity_web_mcp.cli.skill._get_current_version", return_value="0.4.0")
+    def test_update_reports_failure_and_preserves_skill(
+        self, mock_ver, mock_targets, mock_source, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        user_dir = tmp_path / "skills"
+        skill_dir = user_dir / SKILL_DIR_NAME
+        skill_dir.mkdir(parents=True)
+        installed_skill = skill_dir / "SKILL.md"
+        installed_skill.write_text('---\nname: test\nmetadata:\n  version: "0.3.0"\n---\n')
+        original_content = installed_skill.read_text()
+
+        source_dir = tmp_path / "source" / SKILL_DIR_NAME
+        source_dir.mkdir(parents=True)
+        (source_dir / "SKILL.md").write_text('---\nname: test\nmetadata:\n  version: "0.4.0"\n---\n')
+        mock_source.return_value = source_dir
+        mock_targets.return_value = [
+            SkillTarget(name="test-tool", description="T", user_dir=user_dir, project_dir=".test/skills"),
+        ]
+
+        with patch(
+            "perplexity_web_mcp.cli.skill.shutil.copytree",
+            side_effect=OSError("access denied"),
+        ):
+            assert cmd_skill(["update"]) == 1
+
+        out = capsys.readouterr().out
+        assert "Failed: test-tool" in out
+        assert "All installed skills are up to date" not in out
+        assert installed_skill.read_text() == original_content
