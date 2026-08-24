@@ -246,6 +246,40 @@ class TestInstallUninstall:
         assert installed_skill.read_text() == original_content
         assert (dest_dir / SKILL_DIR_NAME / "references" / "models.md").exists()
 
+    def test_install_customizes_staged_readonly_skill_before_promotion(
+        self, skill_source: Path, dest_dir: Path
+    ) -> None:
+        source_skill = skill_source / "SKILL.md"
+        source_skill.chmod(stat.S_IREAD)
+
+        try:
+            assert _install_skill(skill_source, dest_dir, {"type": "tool", "status": "approved"}) is True
+        finally:
+            source_skill.chmod(source_skill.stat().st_mode | stat.S_IWRITE)
+
+        installed_text = (dest_dir / SKILL_DIR_NAME / "SKILL.md").read_text()
+        assert "type: tool" in installed_text
+        assert "status: approved" in installed_text
+        assert list(dest_dir.glob(f".{SKILL_DIR_NAME}-*")) == []
+
+    def test_install_frontmatter_failure_preserves_existing_skill(self, skill_source: Path, dest_dir: Path) -> None:
+        installed = dest_dir / SKILL_DIR_NAME
+        references = installed / "references"
+        references.mkdir(parents=True)
+        installed_skill = installed / "SKILL.md"
+        installed_skill.write_text("old skill")
+        (references / "models.md").write_text("old reference")
+
+        with patch(
+            "perplexity_web_mcp.cli.skill._inject_frontmatter_extras",
+            side_effect=ValueError("invalid frontmatter"),
+        ):
+            assert _install_skill(skill_source, dest_dir, {"type": "tool"}) is False
+
+        assert installed_skill.read_text() == "old skill"
+        assert (references / "models.md").read_text() == "old reference"
+        assert list(dest_dir.glob(f".{SKILL_DIR_NAME}-*")) == []
+
     def test_uninstall_removes_directory(self, skill_source: Path, dest_dir: Path) -> None:
         _install_skill(skill_source, dest_dir)
         installed = dest_dir / SKILL_DIR_NAME
@@ -254,6 +288,30 @@ class TestInstallUninstall:
         result = _uninstall_skill(dest_dir)
         assert result is True
         assert not installed.exists()
+
+    def test_uninstall_routes_through_readonly_safe_removal(self, skill_source: Path, dest_dir: Path) -> None:
+        _install_skill(skill_source, dest_dir)
+        installed = dest_dir / SKILL_DIR_NAME
+
+        with patch("perplexity_web_mcp.cli.skill._remove_tree") as remove_tree:
+            assert _uninstall_skill(dest_dir) is True
+
+        remove_tree.assert_called_once_with(installed)
+
+    def test_uninstall_removes_readonly_tree(self, skill_source: Path, dest_dir: Path) -> None:
+        _install_skill(skill_source, dest_dir)
+        installed = dest_dir / SKILL_DIR_NAME
+        readonly_files = [installed / "SKILL.md", installed / "references" / "models.md"]
+        for path in readonly_files:
+            path.chmod(stat.S_IREAD)
+
+        try:
+            assert _uninstall_skill(dest_dir) is True
+            assert not installed.exists()
+        finally:
+            for path in readonly_files:
+                if path.exists():
+                    path.chmod(path.stat().st_mode | stat.S_IWRITE)
 
     def test_uninstall_returns_false_when_not_installed(self, dest_dir: Path) -> None:
         assert _uninstall_skill(dest_dir) is False
@@ -331,7 +389,13 @@ class TestCmdSkill:
         mock_source.return_value = source_dir
 
         mock_targets.return_value = [
-            SkillTarget(name="test-tool", description="T", user_dir=user_dir, project_dir=".test/skills"),
+            SkillTarget(
+                name="test-tool",
+                description="T",
+                user_dir=user_dir,
+                project_dir=".test/skills",
+                frontmatter_extras={"type": "tool"},
+            ),
         ]
 
         assert cmd_skill(["update"]) == 0
@@ -339,6 +403,7 @@ class TestCmdSkill:
         assert "Updated" in out
         assert "0.3.0" in out
         assert "0.4.0" in out
+        assert "type: tool" in (skill_dir / "SKILL.md").read_text()
 
     @patch("perplexity_web_mcp.cli.skill._find_skill_source")
     @patch("perplexity_web_mcp.cli.skill._get_targets")

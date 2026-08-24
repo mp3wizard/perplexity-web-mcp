@@ -2,7 +2,7 @@
 name: perplexity-web-mcp
 description: 'Search the web and query AI models via Perplexity AI using perplexity-web-mcp-cli. Supports CLI commands (pwm ask, pwm research), MCP tools (pplx_*), and Anthropic/OpenAI-compatible API server. Use when the user mentions "perplexity", "pplx", "pwm", "web search with AI", "deep research", "search the internet", or wants to query premium models like GPT-5.6 Terra, GPT-5.6 Sol, Grok, Claude, Gemini, GLM, or Nemotron through Perplexity''s web interface.'
 metadata:
-  version: "0.14.10"
+  version: "0.14.11"
   author: "Jacob BD"
 
 ---
@@ -279,10 +279,11 @@ Use the shared daemon when multiple MCP clients or Codex sessions should connect
 to one local MCP process:
 
 ```bash
-pwm serve-mcp                         # SSE on 127.0.0.1:8000
+pwm serve-mcp --transport streamable-http  # HTTP MCP on 127.0.0.1:8000/mcp
 pwm serve-mcp --status                # Check the daemon
 pwm serve-mcp --stop                  # Stop the daemon
-pwm setup add codex --sse             # Configure Codex for the SSE endpoint
+pwm setup add codex --http            # Configure Codex for Streamable HTTP
+pwm serve-mcp --transport sse         # Start the legacy SSE transport
 ```
 
 The HTTP transports bind to loopback by default. Keep the daemon on a loopback
