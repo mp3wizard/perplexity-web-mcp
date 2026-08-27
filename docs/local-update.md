@@ -113,11 +113,17 @@ push, do not report them as new:
   "hardcoded secret" is a string inside `__all__`.
 
 **To tell new from pre-existing**, cross-reference finding line numbers against
-the diff hunks — a total count alone will not do it:
+the diff hunks — a total count alone will not do it. `scripts/sast-diff.py`
+does this instead of doing it by hand:
 
 ```bash
-git diff <last>..<new> -- src/ | grep '^@@'
+uv run scripts/sast-diff.py <last-synced-sha> <new-sha>
 ```
+
+Runs bandit and semgrep, diffs `<last>..<new>` for `src/`, and reports only the
+findings whose line falls inside a hunk that diff actually touched. Exit `0`
+means nothing new — the rest is the baseline above. Exit `1` prints the new
+ones for review; they are not automatically bad, just not yet vetted.
 
 Worked example, 0.14.10: bandit reported 36, but only 3 fell inside code the sync
 touched — a subprocess call to a `shutil.which()`-resolved `codex` CLI in
