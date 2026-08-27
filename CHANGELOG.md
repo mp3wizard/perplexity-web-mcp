@@ -4,6 +4,12 @@ All notable changes to **perplexity-web-mcp-cli** are documented in this file.
 
 ---
 
+## [0.14.12] - 2026-08-26
+
+### Fixed
+
+- **Connector preflight** — Fails before dispatch when a connector source cannot be verified from account limits or is exhausted, preventing unavailable connector requests from silently falling back to web search. ([#45](https://github.com/jacob-bd/perplexity-web-mcp/issues/45))
+
 ## [0.14.11] - 2026-08-22
 
 ### Fixed

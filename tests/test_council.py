@@ -15,6 +15,7 @@ from perplexity_web_mcp.council import (
     council_ask,
 )
 from perplexity_web_mcp.models import Model, Models
+from perplexity_web_mcp.rate_limits import RateLimits, SourceLimit
 
 
 # ============================================================================
@@ -250,7 +251,7 @@ class TestCouncilAsk:
         assert result.model_names == ["Sonar 2", "GPT"]
 
     @patch("perplexity_web_mcp.shared.check_limits_before_query", return_value=None)
-    @patch("perplexity_web_mcp.shared.get_limit_cache", return_value=None)
+    @patch("perplexity_web_mcp.shared.get_limit_cache")
     @patch("perplexity_web_mcp.shared.get_client")
     def test_connector_source_id_is_passed_to_models(
         self,
@@ -258,6 +259,11 @@ class TestCouncilAsk:
         mock_cache: MagicMock,
         mock_limits: MagicMock,
     ) -> None:
+        mock_cache.return_value.get_rate_limits.return_value = RateLimits(
+            source_limits=[
+                SourceLimit(source_id="pitchbook_mcp_cashmere", monthly_limit=5, remaining=3),
+            ]
+        )
         mock_conv = MagicMock()
         mock_conv.answer = "Connector answer"
         mock_conv.search_results = []

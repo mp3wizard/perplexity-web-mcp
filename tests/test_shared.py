@@ -139,12 +139,21 @@ class TestResolveSourceFocus:
         assert sources == ["pitchbook_mcp_cashmere"]
         assert search_focus is shared.SearchFocus.WEB
 
-    def test_connector_like_id_is_accepted_when_limits_unavailable(self) -> None:
+    def test_connector_like_id_fails_when_limits_unavailable(self) -> None:
         with patch("perplexity_web_mcp.shared.get_limit_cache", return_value=None):
-            sources, search_focus = shared.resolve_source_focus("crunchbase_mcp_cashmere")
+            with pytest.raises(shared.SourceResolutionError, match="Could not verify connector"):
+                shared.resolve_source_focus("crunchbase_mcp_cashmere")
 
-        assert sources == ["crunchbase_mcp_cashmere"]
-        assert search_focus is shared.SearchFocus.WEB
+    def test_exhausted_connector_fails_before_query(self) -> None:
+        cache = MagicMock()
+        cache.get_rate_limits.return_value = RateLimits(
+            source_limits=[
+                SourceLimit(source_id="pitchbook_mcp_cashmere", monthly_limit=5, remaining=0),
+            ]
+        )
+        with patch("perplexity_web_mcp.shared.get_limit_cache", return_value=cache):
+            with pytest.raises(shared.SourceResolutionError, match="exhausted"):
+                shared.resolve_source_focus("pitchbook_mcp_cashmere")
 
     def test_unknown_source_raises_instead_of_falling_back_to_web(self) -> None:
         with patch("perplexity_web_mcp.shared.get_limit_cache", return_value=None):

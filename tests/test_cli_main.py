@@ -139,12 +139,14 @@ class TestCmdAsk:
 
     @patch("perplexity_web_mcp.cli.main.ask", return_value="response")
     @patch("perplexity_web_mcp.shared.get_limit_cache", return_value=None)
-    def test_connector_source_flag(self, mock_cache: MagicMock, mock_ask: MagicMock) -> None:
+    def test_unverified_connector_source_fails_before_query(
+        self, mock_cache: MagicMock, mock_ask: MagicMock, capsys: pytest.CaptureFixture
+    ) -> None:
         code = _cmd_ask(["query", "-m", "sonar", "-s", "pitchbook_mcp_cashmere"])
 
-        assert code == 0
-        call_args = mock_ask.call_args
-        assert call_args[0][2] == "pitchbook_mcp_cashmere"
+        assert code == 1
+        mock_ask.assert_not_called()
+        assert "Could not verify connector" in capsys.readouterr().err
 
 
 # ============================================================================

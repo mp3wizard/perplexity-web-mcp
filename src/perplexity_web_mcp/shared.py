@@ -204,16 +204,16 @@ def resolve_model(name: str, thinking: bool = False) -> Model:
     return thinking_model if thinking and thinking_model else base_model
 
 
-def _source_ids_from_limits() -> set[str]:
+def _source_limits_from_rate_limits() -> list[SourceLimit]:
     cache = get_limit_cache()
     if cache is None:
-        return set()
+        return []
 
     limits = cache.get_rate_limits()
     if limits is None:
-        return set()
+        return []
 
-    return {source.source_id for source in limits.source_limits}
+    return limits.source_limits
 
 
 def resolve_source_focus(source_focus: str) -> tuple[list[str], SearchFocus]:
@@ -223,12 +223,20 @@ def resolve_source_focus(source_focus: str) -> tuple[list[str], SearchFocus]:
         search_focus = SearchFocus.WRITING if source == "none" else SearchFocus.WEB
         return SOURCE_FOCUS_ALIASES[source], search_focus
 
-    # Check cheap lookups before making a network call.
-    if source in _BUILTIN_SOURCE_IDS or _CONNECTOR_ID_RE.fullmatch(source):
+    if source in _BUILTIN_SOURCE_IDS:
         return [source], SearchFocus.WEB
 
-    if source in _source_ids_from_limits():
+    source_limits = _source_limits_from_rate_limits()
+    source_limit = next((limit for limit in source_limits if limit.source_id == source), None)
+    if source_limit is not None:
+        if source_limit.is_exhausted:
+            raise SourceResolutionError(f"Connector '{source}' is exhausted. Refresh connector limits before retrying.")
         return [source], SearchFocus.WEB
+
+    if _CONNECTOR_ID_RE.fullmatch(source):
+        raise SourceResolutionError(
+            f"Could not verify connector '{source}'. Run `pwm connectors list --refresh` and use a reported ID."
+        )
 
     available = ", ".join(SOURCE_FOCUS_NAMES)
     raise SourceResolutionError(
