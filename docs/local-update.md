@@ -89,7 +89,15 @@ trufflehog filesystem /tmp/gl-scan --no-update
 Point `--source` at a directory containing the patch, not at `/tmp` itself —
 scanning `/tmp` reports "scanned ~0 bytes" and looks like a clean pass.
 
-Upstream has committed live credentials before. Treat any hit as blocking.
+Upstream has committed live credentials before. Treat any hit as blocking —
+but check the `Raw` value before assuming it is one. 0.14.13 gave a
+`Verified: true` hit from trufflehog's `Lob` detector; `Raw` was
+`test_pwm_api_key_is_used_for_server_auth`, a pytest function name that
+happens to match Lob's `test_...` key-prefix pattern. gitleaks found nothing
+on the same diff — a second scanner disagreeing is a reason to check the raw
+value, not a reason to wave it through. Get the full match with
+`trufflehog filesystem /tmp/gl-scan --no-update --json`, not just the summary
+line.
 
 ## SAST baseline
 
@@ -97,17 +105,24 @@ Upstream has committed live credentials before. Treat any hit as blocking.
 every run. These are **pre-existing** — do not fix them, do not let them block a
 push, do not report them as new:
 
-- `pwm api` binds `0.0.0.0` by default and `verify_auth()` accepts any request when
-  `ANTHROPIC_API_KEY` is unset (`api/server.py`). Upstream design; mitigate at
-  runtime with `--host 127.0.0.1` and a key. (Note: as of 0.14.10 upstream *did*
-  add this guard on the MCP side — `is_loopback_host` plus a SystemExit — but not
-  on the API side.)
+- **Fixed as of 0.14.13** — `pwm api` used to bind `0.0.0.0` by default and accept
+  any request when no key was set. Upstream closed it properly: default host is
+  now `127.0.0.1`, and `ServerConfig.__post_init__` raises `ValueError` at
+  startup if you bind non-loopback without `PWM_API_KEY`/`ANTHROPIC_API_KEY` set
+  — the same `is_loopback_host` + fail-closed pattern the MCP daemon got in
+  0.14.10, now on the API side too. The "no key configured = accept any auth"
+  behavior in `verify_auth()` is unchanged, but it's no longer reachable from
+  outside loopback without a key, so it's safe by construction now. Auth
+  comparison also moved to `hmac.compare_digest` (was `!=`, timing-attack-prone),
+  Bearer-token parsing got stricter (was a blind prefix strip), and `verify_auth`
+  now covers WebSocket too. Bandit's B104 (bind-all, was ×3) dropped to 0 as a
+  direct result — confirmed the static-analysis signal matches the code read.
 - Wildcard CORS with credentials, `api/server.py` — the single recurring semgrep hit.
-- bandit, ~36 findings in `src/`: B603 ×12 and B404 ×2 (subprocess in `cli/setup.py`
+  Still present as of 0.14.13; this fix didn't touch it.
+- bandit, ~32 findings in `src/`: B603 ×12 and B404 ×2 (subprocess in `cli/setup.py`
   and `cli/hack.py`, all `shutil.which()`-resolved binaries, never user input),
-  B110 ×12 (best-effort try/except/pass in cleanup paths), B105 ×4 (strings like
-  `"No token found"` matched as passwords), B104 ×3 (same bind-all root cause),
-  B310, B607, B311 ×1 each.
+  B110 ×11 (best-effort try/except/pass in cleanup paths), B105 ×4 (strings like
+  `"No token found"` matched as passwords), B310, B607, B311 ×1 each.
 - `mcps-audit` scores this repo 100/100 FAIL. Unreliable here: its two "CRITICAL
   injection" hits are f-string prompt assembly in `api/responses.py`, and its
   "hardcoded secret" is a string inside `__all__`.
@@ -133,8 +148,9 @@ elsewhere in the codebase.
 
 ## Test baseline
 
-Was 462. **487 as of 0.14.10** — upstream added tests for the new daemon
-lifecycle. Bump this line when upstream adds more; a drop is a real signal.
+462 → 487 (0.14.10, daemon lifecycle) → 514 (0.14.11) → **549 as of 0.14.13**
+(security-hardening tests, incl. `test_pwm_api_key_is_used_for_server_auth`).
+Bump this line when upstream adds more; a drop is a real signal.
 
 Integration tests hit the live Perplexity API and skip without a session token.
 Locally the token is present, so they run. They are not a push gate — a network

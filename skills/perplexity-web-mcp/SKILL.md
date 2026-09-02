@@ -2,7 +2,7 @@
 name: perplexity-web-mcp
 description: 'Search the web and query AI models via Perplexity AI using perplexity-web-mcp-cli. Supports CLI commands (pwm ask, pwm research), MCP tools (pplx_*), and Anthropic/OpenAI-compatible API server. Use when the user mentions "perplexity", "pplx", "pwm", "web search with AI", "deep research", "search the internet", or wants to query premium models like GPT-5.6 Terra, GPT-5.6 Sol, Grok, Claude, Gemini, GLM, or Nemotron through Perplexity''s web interface.'
 metadata:
-  version: "0.14.12"
+  version: "0.14.13"
   author: "Jacob BD"
 
 ---
@@ -257,7 +257,9 @@ Connector source IDs:
 - CLI: run `pwm connectors list`, then pass the source ID with `-s`.
 - MCP: call `pplx_connectors()`, then pass the source ID as `source_focus`.
 - Do not guess connector IDs. If no connector is listed, use normal source focus values.
-- Connector access depends on the authenticated Perplexity account; free accounts may show none.
+- Connector access inherits the authenticated Perplexity account's permissions and may expose private data to the calling agent.
+- Set `PWM_CONNECTORS_ENABLED=0` to disable connector queries, or use `PWM_CONNECTOR_ALLOWLIST` with exact comma-separated connector IDs.
+- When local connector policy is unset, reported connectors remain available for backward compatibility.
 - Unknown source values fail instead of falling back to web search.
 
 Output options:
